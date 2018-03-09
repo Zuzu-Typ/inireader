@@ -16,17 +16,17 @@ This script makes configuration files accessible from Python\.
   
 ### Reference  
 
-    Config(file_path) -> Config instance
+    Config(file_path[, comment_char, escape_char]) -> Config instance
   
 This instance contains the entire configuration of the file at <**file_path**>\.  
 <**comment_char**> can be set to the desired character used to indicate comments \(**';'** by default\)  
 <**escape_char**> can be set to the desired escape character \(**'\\'** by default\)  
 
-    Config -> (closest matching type) <value>
+    Config[section][key] -> (closest matching type) <value>
   
 Returns the <**value**> of <**key**> in <**section**>\.  
 
-    Config = value
+    Config[section, key] = value
   
 Sets the <**value**> of <**key**> in <**section**>\.  
 
