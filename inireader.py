@@ -14,7 +14,7 @@ cfg[<section>][<key>] = value
 
 cfg.save()"""
 
-__version__ = 1.6
+__version__ = 1.7
 
 class _StringType:
     def _stoi(self, string): # converts a string to an int
@@ -200,6 +200,8 @@ class _Section:
 ##        if not key in self.dict: # new
 ##            self.key =
         self.dict[key].set(value)
+        
+    __contains__ = lambda self, key: self.dict.__contains__(key)
 
 class Config:
     def __init__(self, path, comment_char=";", escape_char="\\"):
@@ -297,6 +299,8 @@ class Config:
                 return
                 
         raise IndexError(key)
+        
+    __contains__ = lambda self, key: self.config_dict.__contains__(key)
 
     def save(self):
         file = open_file(self.path, "w")

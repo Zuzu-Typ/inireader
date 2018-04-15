@@ -20,6 +20,7 @@ This script makes configuration files accessible from Python\.
   
 This instance contains the entire configuration of the file at <**file_path**>\.  
 <**comment_char**> can be set to the desired character used to indicate comments \(**';'** by default\)  
+***  
 <**escape_char**> can be set to the desired escape character \(**'\\'** by default\)  
 
     Config[section][key] -> (closest matching type) <value>
