@@ -14,7 +14,7 @@ cfg[<section>][<key>] = value
 
 cfg.save()"""
 
-__version__ = 1.7
+__version__ = 1.8
 
 class _StringType:
     def _stoi(self, string): # converts a string to an int
@@ -164,12 +164,15 @@ def _decode(string):
         return string
 
 # encodings for files
-encodings = [None, "ascii", "ansi", "utf-8", "utf-16"]
+encodings = ["ascii", "utf-8", "utf-16", None]
 
 def open_file(path, mode="r"):
     for encoding in encodings:
         try:
-            return open(path, mode, encoding=encoding)
+            f = open(path, mode, encoding=encoding)
+            f.read()
+            f.seek(0)
+            return f
         except: continue
     raise IOError("'{}' couldn't be read".format(path))
 
@@ -204,7 +207,7 @@ class _Section:
     __contains__ = lambda self, key: self.dict.__contains__(key)
 
 class Config:
-    def __init__(self, path, comment_char=";", escape_char="\\"):
+    def __init__(self, path, comment_char=";", escape_char="\\", section_only=False):
         file = open_file(path, "r")
         self.content = file.readlines()
         file.close()
@@ -216,7 +219,10 @@ class Config:
 
         self.config_dict = {}
 
-        self._interpret()
+        self.section_only = section_only
+
+        if not section_only: self._interpret()
+        else: self._interpret_section_only()
 
     def _escape(self, text):
         ignore = False
@@ -253,7 +259,25 @@ class Config:
                 return out
 
             out += char
-        return out    
+        return out
+
+    def _interpret_section_only(self):
+        section = None
+        line_index = -1
+        for line in self.content:
+            line_index += 1
+            line_strip = line.strip()
+            if len(line_strip) >= 2 and line_strip[0] == "[" and line_strip[-1] == "]": # new section
+                section = line_strip[1:-1]
+                
+                if section in self.config_dict:
+                    raise SyntaxError("section {} redefinition.".format(section))
+                self.config_dict[section] = []
+                continue
+            
+            line_without_comments = self._remove_comments(line)
+
+            self.config_dict[section].append(line.strip())
 
     def _interpret(self):
         section = None
@@ -269,7 +293,7 @@ class Config:
                 self.config_dict[section] = {}
                 continue
             
-            line_without_comments = self._remove_comments(line)
+            line_without_comments = self._remove_comments(line).strip()
 
             eq_index = line_without_comments.find("=")
 
@@ -290,6 +314,8 @@ class Config:
             if len(key) == 2:
                 return _Section(self.config_dict[key[0]])[key[1]]
             raise IndexError(key)
+        if self.section_only:
+            return self.config_dict[key]
         return _Section(self.config_dict[key])
 
     def __setitem__(self, key, value):
