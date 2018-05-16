@@ -2,6 +2,8 @@ import sys
 if sys.version_info[0] < 3:
     from codecs import open
 
+from codecs import BOM_UTF16_LE, BOM_UTF16_BE, BOM_UTF8
+
 __doc__ = """This script helps to handle configuration files (*.ini)
 
 cfg = Config(file_path[, comment_char, escape_char])
@@ -166,15 +168,44 @@ def _decode(string):
 # encodings for files
 encodings = ["ascii", "utf-8", "utf-16", None]
 
+import traceback
+
 def open_file(path, mode="r"):
     for encoding in encodings:
         try:
-            f = open(path, mode, encoding=encoding)
-            f.read()
-            f.seek(0)
+            f = open(path, mode)
+            if "r" in mode:
+                f.read()
+                f.seek(0)
             return f
-        except: continue
+        except: traceback.print_exc()
     raise IOError("'{}' couldn't be read".format(path))
+
+def to_bytes(content):
+    enc = 0
+    if content.startswith(BOM_UTF8):
+        enc = 8
+        content = content[2:]
+        
+
+    if content.startswith(BOM_UTF16_LE):
+        enc = 16
+        content = content[2:]
+
+    if content.startswith(BOM_UTF16_BE):
+        enc = 16.2
+        content = content[2:]
+
+    out = b""
+
+    if enc == 16:
+        out = content.decode("utf-16-le").encode("utf-8")
+    elif enc == 16.2:
+        out = content.decode("utf-16-be").encode("utf-8")
+    else:
+        out = content
+
+    return out.splitlines(True)
 
 
 class _Pointer:
@@ -185,31 +216,57 @@ class _Pointer:
         self.config = config
 
     def set(self, value):
-        text = str(value)
+        text = (value)
         self.config.content[self.line] = self.config.content[self.line][:self.from_] + text + self.config.content[self.line][self.to:]
         self.to = self.from_ + len(text)
 
     def __call__(self):
         return self.config.content[self.line][self.from_:self.to]
 
+class _SecIter:
+    def __init__(self, iterable):
+        self.iterable = iterable
+
+    def __next__(self):
+        return next(self.iterable).decode()
+
 class _Section:
-    def __init__(self, dict_):
+    def __init__(self, dict_, no_decode = False):
         self.dict = dict_
+        self.nd = no_decode
 
     def __getitem__(self, key):
-        return _decode(self.dict[key]())
+        key_type = type(key)
+        if key_type == str:
+            key = key.encode()
+        if key_type == str:
+            if not self.nd:return _decode(self.dict[key]()).decode()
+            else: return self.dict[key]().decode()
 
     def __setitem__(self, key, value):
+        if type(value) == str:
+            value = value.encode()
+        if type(key) == str:
+            key = key.encode()
 ##        if not key in self.dict: # new
 ##            self.key =
         self.dict[key].set(value)
         
-    __contains__ = lambda self, key: self.dict.__contains__(key)
+    __contains__ = lambda self, key: self.dict.__contains__(key.encode() if type(key) == str else key)
+
+    __iter__ = lambda self: _SecIter(iter(self.dict))
+
+class _CfgIter:
+    def __init__(self, iterable):
+        self.iterable = iterable
+
+    def __next__(self):
+        return next(self.iterable).decode()
 
 class Config:
-    def __init__(self, path, comment_char=";", escape_char="\\", section_only=False):
-        file = open_file(path, "r")
-        self.content = file.readlines()
+    def __init__(self, path, comment_char=";", escape_char="\\", section_only=False, no_decode=False):
+        file = open_file(path, "rb")
+        self.content = to_bytes(file.read())
         file.close()
 
         self.path = path
@@ -221,13 +278,16 @@ class Config:
 
         self.section_only = section_only
 
+        self.no_decode = no_decode
+
         if not section_only: self._interpret()
         else: self._interpret_section_only()
 
     def _escape(self, text):
         ignore = False
-        out = ""
+        out = b""
         for char in text:
+            char = bytes((char,))
             if ignore:
                 out += char
                 ignore = False
@@ -242,8 +302,9 @@ class Config:
 
     def _remove_comments(self, text, return_escape_char = True):
         ignore = False
-        out = ""
+        out = b""
         for char in text:
+            char = bytes((char,))
             if ignore:
                 out += char
                 ignore = False
@@ -267,7 +328,7 @@ class Config:
         for line in self.content:
             line_index += 1
             line_strip = line.strip()
-            if len(line_strip) >= 2 and line_strip[0] == "[" and line_strip[-1] == "]": # new section
+            if len(line_strip) >= 2 and line_strip[0] == b"["[0] and line_strip[-1] == b"]"[0]: # new section
                 section = line_strip[1:-1]
                 
                 if section in self.config_dict:
@@ -285,7 +346,7 @@ class Config:
         for line in self.content:
             line_index += 1
             line_strip = line.strip()
-            if len(line_strip) >= 2 and line_strip[0] == "[" and line_strip[-1] == "]": # new section
+            if len(line_strip) >= 2 and line_strip[0] == b"["[0] and line_strip[-1] == b"]"[0]: # new section
                 section = line_strip[1:-1]
                 
                 if section in self.config_dict:
@@ -295,7 +356,7 @@ class Config:
             
             line_without_comments = self._remove_comments(line).strip()
 
-            eq_index = line_without_comments.find("=")
+            eq_index = line_without_comments.find(b"=")
 
             if eq_index != -1: # probably a definition
                 left_strip = line_without_comments[:eq_index].strip()
@@ -307,29 +368,34 @@ class Config:
                 
                 right = _Pointer(line_index, right_index, right_strip, self)
 
+
                 self.config_dict[section][left] = right
 
     def __getitem__(self, key):
         if type(key) in (slice, tuple):
             if len(key) == 2:
-                return _Section(self.config_dict[key[0]])[key[1]]
+                return _Section(self.config_dict[(key[0]).encode() if type(key[0]) == str else key[0]], no_decode=self.no_decode)[key[1]]
             raise IndexError(key)
+        
         if self.section_only:
+            if type(key) == str:
+                key = key.encode()
             return self.config_dict[key]
-        return _Section(self.config_dict[key])
+        return _Section(self.config_dict[(key).encode() if type(key) == str else key], no_decode=self.no_decode)
 
     def __setitem__(self, key, value):
         if type(key) in (slice, tuple):
             if len(key) == 2:
-                _Section(self.config_dict[key[0]])[key[1]] = value
+                _Section(self.config_dict[(key[0]).encode() if type(key[0]) == str else key[0]], no_decode=self.no_decode)[key[1]] = value
                 return
-                
         raise IndexError(key)
         
-    __contains__ = lambda self, key: self.config_dict.__contains__(key)
+    __contains__ = lambda self, key: self.config_dict.__contains__(key.encode() if type(key) == str else key)
+
+    __iter__ = lambda self: _CfgIter(iter(self.config_dict))
 
     def save(self):
-        file = open_file(self.path, "w")
+        file = open_file(self.path, "wb")
         file.writelines(self.content)
         file.close()
 
