@@ -160,6 +160,9 @@ __st = _StringType()
 
 def _decode(string):
     global __st
+    if type(string) == bytes:
+        string = string.decode()
+        
     try:
         return __st.decode(string)
     except:
@@ -239,9 +242,8 @@ class _Section:
         key_type = type(key)
         if key_type == str:
             key = key.encode()
-        if key_type == str:
-            if not self.nd:return _decode(self.dict[key]()).decode()
-            else: return self.dict[key]().decode()
+        if not self.nd:return _decode(self.dict[key]())
+        else: return self.dict[key]().decode()
 
     def __setitem__(self, key, value):
         if type(value) == str:
