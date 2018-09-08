@@ -16,157 +16,7 @@ cfg[<section>][<key>] = value
 
 cfg.save()"""
 
-__version__ = 1.8
-
-class _StringType:
-    def _stoi(self, string): # converts a string to an int
-        return int(string)
-
-    def _stof(self, string): # converts a string to a float
-        return float(string.replace("f", ""))
-
-    def _stod(self, string): # converts a string to a dict
-        string = string[1:-1] # remove parenthesis
-        items = []
-        depth = 0
-        index = 0
-        last_index = 0
-        for char in string:
-            if char in ["(", "[", "{"]:
-                depth += 1
-            elif char in [")", "]", "}"]:
-                depth -= 1
-            elif char == "," and not depth:
-                items.append(string[last_index:index])
-                last_index = index + 1
-            index += 1
-        items.append(string[last_index:index])
-
-        dictionary = {}
-
-        for item in items:
-            key, value = item.split(":")
-
-            dictionary[self.decode(key)] = self.decode(value)
-
-        return dictionary
-
-    def _stot(self, string): # converts a string to a tuple
-        string = string[1:-1] # remove parenthesis
-        items = []
-        depth = 0
-        index = 0
-        last_index = 0
-        for char in string:
-            if char in ["(", "[", "{"]:
-                depth += 1
-            elif char in [")", "]", "}"]:
-                depth -= 1
-            elif char == "," and not depth:
-                items.append(string[last_index:index])
-                last_index = index + 1
-            index += 1
-        items.append(string[last_index:index])
-
-        output = []
-
-        for item in items:
-            output.append(self.decode(item))
-
-        return tuple(output)
-
-    def _stol(self, string): # converts a string to a list
-        string = string[1:-1] # remove parenthesis
-        items = []
-        depth = 0
-        index = 0
-        last_index = 0
-        for char in string:
-            if char in ["(", "[", "{"]:
-                depth += 1
-            elif char in [")", "]", "}"]:
-                depth -= 1
-            elif char == "," and not depth:
-                items.append(string[last_index:index])
-                last_index = index + 1
-            index += 1
-        items.append(string[last_index:index])
-
-        output = []
-
-        for item in items:
-            output.append(self.decode(item))
-
-        return output
-
-    def _stos(self, string): # converts a string to a set
-        string = string[1:-1] # remove parenthesis
-        items = []
-        depth = 0
-        index = 0
-        last_index = 0
-        for char in string:
-            if char in ["(", "[", "{"]:
-                depth += 1
-            elif char in [")", "]", "}"]:
-                depth -= 1
-            elif char == "," and not depth:
-                items.append(string[last_index:index])
-                last_index = index + 1
-            index += 1
-        items.append(string[last_index:index])
-
-        output = set()
-
-        for item in items:
-            output.add(self.decode(item))
-
-        return output
-
-    def _stob(self, string): # converts a string to a bool
-        string_ = string.strip().lower()
-        if string_ == "false":
-            return False
-        elif string_ == "true":
-            return True
-        elif string_ == "none":
-            return None
-        else:
-            return string
-
-    def decode(self, string):
-        string = string.strip()
-        if len(string) >= 2:
-            if string[0] == "(" and string[-1] == ")":
-                return self._stot(string)
-            if string[0] == "[" and string[-1] == "]":
-                return self._stol(string)
-            if string[0] == "{" and string[-1] == "}":
-                if ":" in string:
-                    return self._stod(string)
-                else:
-                    return self._stos(string)
-            if string[0] in ["\"", "'"] and string[-1] in ["\"", "'"]:
-                return string[1:-1]
-            if "." in string:
-                return self._stof(string)
-        asB = self._stob(string)
-        if type(asB) != str:
-            return asB
-        else:
-            return self._stoi(string)
-        
-__st = _StringType()
-
-def _decode(string):
-    global __st
-    if type(string) == bytes:
-        string = string.decode()
-        
-    try:
-        return __st.decode(string)
-    except:
-        return string
+__version__ = 1.9
 
 # encodings for files
 encodings = ["ascii", "utf-8", "utf-16", None]
@@ -242,7 +92,7 @@ class _Section:
         key_type = type(key)
         if key_type == str:
             key = key.encode()
-        if not self.nd:return _decode(self.dict[key]())
+        if not self.nd:return eval(self.dict[key]())
         else: return self.dict[key]().decode()
 
     def __setitem__(self, key, value):
@@ -265,6 +115,42 @@ class _CfgIter:
     def __next__(self):
         return next(self.iterable).decode()
 
+class _UnencodedDictIter:
+    def __init__(self, iterator):
+        self.iterator = iterator
+
+    def __next__(self):
+        return next(self.iterator).decode()
+
+class _UnencodedDict:
+    def __init__(self, dict_=None):
+        if dict_ == None:
+            dict_ = {}
+        self.dict = dict_
+
+    def __getitem__(self, key):
+        if type(key) == str:
+            key = key.encode()
+
+        return self.dict[key]
+
+    def __setitem__(self, key, value):
+        if type(key) == str:
+            key = key.encode()
+
+        self.dict[key] = value
+
+    __contains__ = lambda self, key: self.dict.__contains__(key.encode() if type(key) == str else key)
+
+    __iter__ = lambda self: _UnencodedDictIter(iter(self.dict))
+
+    __repr__ = lambda self: self.dict.__repr__()
+    __str__ = lambda self: self.dict.__str__()
+
+    pop = lambda self, *args: self.dict.pop(*args)
+
+    clear = lambda self, *args: self.dict.clear(*args)
+
 class Config:
     def __init__(self, path, comment_char=";", escape_char="\\", section_only=False, no_decode=False):
         file = open_file(path, "rb")
@@ -284,23 +170,6 @@ class Config:
 
         if not section_only: self._interpret()
         else: self._interpret_section_only()
-
-    def _escape(self, text):
-        ignore = False
-        out = b""
-        for char in text:
-            char = bytes((char,))
-            if ignore:
-                out += char
-                ignore = False
-                continue
-            
-            if char == self.escape_char:
-                ignore = True
-                continue
-
-            out += char
-        return out
 
     def _remove_comments(self, text, return_escape_char = True):
         ignore = False
@@ -326,10 +195,8 @@ class Config:
 
     def _interpret_section_only(self):
         section = None
-        line_index = -1
         for line in self.content:
-            line_index += 1
-            line_strip = line.strip()
+            line_strip = self._remove_comments(line).strip()
             if len(line_strip) >= 2 and line_strip[0] == b"["[0] and line_strip[-1] == b"]"[0]: # new section
                 section = line_strip[1:-1]
                 
@@ -337,17 +204,15 @@ class Config:
                     raise SyntaxError("section {} redefinition.".format(section))
                 self.config_dict[section] = []
                 continue
-            
-            line_without_comments = self._remove_comments(line)
 
-            self.config_dict[section].append(line.strip())
+            self.config_dict[section].append(line_strip)
 
     def _interpret(self):
         section = None
         line_index = -1
         for line in self.content:
             line_index += 1
-            line_strip = line.strip()
+            line_strip = self._remove_comments(line).strip()
             if len(line_strip) >= 2 and line_strip[0] == b"["[0] and line_strip[-1] == b"]"[0]: # new section
                 section = line_strip[1:-1]
                 
@@ -355,17 +220,15 @@ class Config:
                     raise SyntaxError("section {} redefinition.".format(section))
                 self.config_dict[section] = {}
                 continue
-            
-            line_without_comments = self._remove_comments(line).strip()
 
-            eq_index = line_without_comments.find(b"=")
+            eq_index = line_strip.find(b"=")
 
             if eq_index != -1: # probably a definition
-                left_strip = line_without_comments[:eq_index].strip()
+                left_strip = line_strip[:eq_index].strip()
                 
                 left = left_strip
 
-                right_strip = line_without_comments[eq_index+1:].strip()
+                right_strip = line_strip[eq_index+1:].strip()
                 right_index = line.index(right_strip)
                 
                 right = _Pointer(line_index, right_index, right_strip, self)
@@ -400,6 +263,114 @@ class Config:
         file = open_file(self.path, "wb")
         file.writelines(self.content)
         file.close()
+
+class Database(_UnencodedDict):
+    def __init__(self, path, comment_char=";", escape_char="\\", section_only=False, no_decode=False):
+        file = open_file(path, "rb")
+        self.content = to_bytes(file.read())
+        file.close()
+
+        self.path = path
+
+        self.comment_char = comment_char
+        self.escape_char = escape_char
+
+        self.dict = {}
+
+        self.section_only = section_only
+
+        self.no_decode = no_decode
+
+        if not section_only: self._interpret()
+        else: self._interpret_section_only()
+
+    def _remove_comments(self, text, return_escape_char = True):
+        ignore = False
+        out = b""
+        for char in text:
+            char = bytes((char,))
+            if ignore:
+                out += char
+                ignore = False
+                continue
+            
+            if char == self.escape_char:
+                if return_escape_char:
+                    out += char
+                ignore = True
+                continue
+            
+            if char == self.comment_char:
+                return out
+
+            out += char
+        return out
+
+    def _interpret_section_only(self):
+        section = None
+        for line in self.content:
+            line_strip = self._remove_comments(line).strip()
+            if len(line_strip) >= 2 and line_strip[0] == b"["[0] and line_strip[-1] == b"]"[0]: # new section
+                section = line_strip[1:-1]
+                
+                if section in self.dict:
+                    raise SyntaxError("section {} redefinition.".format(section))
+                self.dict[section] = []
+                continue
+
+            self.dict[section].append(line_strip if self.no_decode else line_strip.decode())
+
+    def _interpret(self):
+        section = None
+        line_index = -1
+        for line in self.content:
+            line_index += 1
+            line_strip = self._remove_comments(line).strip()
+            if len(line_strip) >= 2 and line_strip[0] == b"["[0] and line_strip[-1] == b"]"[0]: # new section
+                section = line_strip[1:-1]
+                
+                if section in self.dict:
+                    raise SyntaxError("section {} redefinition.".format(section))
+                self.dict[section] = _UnencodedDict()
+                continue
+
+            eq_index = line_strip.find(b"=")
+
+            if eq_index != -1: # probably a definition
+                left_strip = line_strip[:eq_index].rstrip()
+
+                right_strip = line_strip[eq_index+1:].lstrip()
+
+                self.dict[section][left_strip] = right_strip if self.no_decode else eval(right_strip)
+
+    def save(self):
+        out = []
+        if self.section_only:
+            pass
+        else:
+            longest_key_length = 0
+            for section in self.dict:
+                out.append(b"[%b]\n" % (section))
+                for key in self.dict[section].dict:
+                    value = self.dict[section].dict[key]
+
+                    if type(value) != bytes:
+                        value = repr(value).encode()
+
+                    longest_key_length = max(len(key), longest_key_length)
+
+                    out.append(b"%b\t = %b\n" % (key, value))
+
+            longest_key_length = int((longest_key_length // 4 + 1) * 4)
+            index = 0
+            for line in out:
+                if line and line[0] != b"[" and b"=" in line:
+                    out[index] = line.replace(b"\t", b"\t" * (int((longest_key_length - line.find(b"\t")) // 4 + 1)), 1)
+                index += 1
+
+        file_ = open(self.path, "wb")
+        file_.write(b"".join(out))
+        file_.close()
 
 if __name__ == "__main__":
     print("inireader by Zuzu_Typ, version {version}\n\n{doc}".format(version=__version__, doc=__doc__))

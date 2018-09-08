@@ -4,3 +4,5 @@ README.rml
 readmelang.py
 runreadmelang.bat
 old/
+test.ini
+*.pyc
